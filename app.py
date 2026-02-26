@@ -1,6 +1,4 @@
 import streamlit as st
-import folium
-from streamlit_folium import st_folium
 import pandas as pd
 import os
 from datetime import datetime
@@ -11,9 +9,22 @@ st.set_page_config(page_title="Formulário com Mapa", layout="wide")
 st.title("📍 Coleta de Localização e Respostas")
 
 # 1. Criar o Mapa Interativo
+'''st.subheader("Selecione a localização no mapa")
+m = folium.Map(location=[-22.969208, -43.179623], zoom_start=13)''' # Começa em Copa'''
+# Em vez de usar folium, use o mapa nativo do streamlit
 st.subheader("Selecione a localização no mapa")
-m = folium.Map(location=[-22.969208, -43.179623], zoom_start=13) # Começa em Copa
 
+# Mapa nativo do Streamlit (não requer folium)
+map_data = pd.DataFrame({
+    'lat': [-23.5505],
+    'lon': [-46.6333]
+})
+
+# Exibe mapa interativo
+st.map(map_data, zoom=13)
+
+# Nota: O mapa nativo do Streamlit não permite clicar para pegar coordenadas
+# diretamente sem folium. Se precisar do clique, teremos que usar outra abordagem.
 # Captura o clique no mapa
 mapa_interativo = st_folium(m, width=700, height=450, returned_objects=["last_object_clicked"])
 
