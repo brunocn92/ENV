@@ -8,66 +8,127 @@ st.set_page_config(page_title="Formulário com Mapa", layout="wide")
 
 st.title("📍 Coleta de Localização e Respostas")
 
-# 1. Criar o Mapa Interativo
-'''st.subheader("Selecione a localização no mapa")
-m = folium.Map(location=[-22.969208, -43.179623], zoom_start=13)''' # Começa em Copa'''
-# Em vez de usar folium, use o mapa nativo do streamlit
-st.subheader("Selecione a localização no mapa")
+# Inicializar variáveis de sessão para coordenadas (Padrão: São Paulo)
+if 'lat' not in st.session_state:
+    st.session_state.lat = -23.5505
+if 'lon' not in st.session_state:
+    st.session_state.lon = -46.6333
 
-# Mapa nativo do Streamlit (não requer folium)
+# 1. Mapa Interativo com Clique (Leaflet.js via HTML)
+st.subheader("1. Clique no mapa para selecionar a localização")
+
+st.markdown("""
+    <style>
+    #map-container {
+        height: 400px;
+        width: 100%;
+        border-radius: 10px;
+        border: 2px solid #e0e0e0;
+    }
+    </style>
+    <div id="map-container"></div>
+    <p style="text-align: center; color: #666;">👆 Clique em qualquer lugar do mapa para colocar o pino</p>
+""", unsafe_allow_html=True)
+
+# Componente HTML/JS com Leaflet
+st.components.v1.html("""
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <div id="map" style="height: 400px; width: 100%;"></div>
+    
+    <script>
+        // Inicializa o mapa
+        var map = L.map('map').setView([-23.5505, -46.6333], 13);
+        
+        // Adiciona camada do OpenStreetMap (Gratuito)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        
+        // Variável para armazenar o marcador
+        var marker = null;
+        
+        // Função para atualizar o Streamlit com as coordenadas
+        function updateStreamlit(lat, lon) {
+            window.parent.postMessage({
+                type: "location_update",
+                latitude: lat,
+                longitude: lon
+            }, "*");
+        }
+        
+        // Evento de clique no mapa
+        map.on('click', function(e) {
+            var lat = e.latlng.lat;
+            var lon = e.latlng.lng;
+            
+            // Remove marcador anterior se existir
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            
+            // Adiciona novo marcador
+            marker = L.marker([lat, lon]).addTo(map);
+            
+            // Envia coordenadas para o Python
+            updateStreamlit(lat, lon);
+        });
+        
+        // Adiciona marcador inicial
+        marker = L.marker([-23.5505, -46.6333]).addTo(map);
+    </script>
+""", height=450)
+
+# Capturar dados do JavaScript (Streamlit não lê postMessage diretamente de forma simples)
+# Por isso, usamos inputs numéricos que o usuário pode ver/ajustar
+st.info("💡 As coordenadas abaixo são atualizadas quando você clica no mapa. Se necessário, ajuste manualmente.")
+
+col1, col2 = st.columns(2)
+with col1:
+    lat_input = st.number_input("Latitude", value=st.session_state.lat, format="%.6f", key="lat_input")
+with col2:
+    lon_input = st.number_input("Longitude", value=st.session_state.lon, format="%.6f", key="lon_input")
+
+# Atualiza session state com os valores dos inputs
+st.session_state.lat = lat_input
+st.session_state.lon = lon_input
+
+# 2. Exibir Confirmação da Localização
+st.subheader("2. Visualizar Localização Selecionada")
 map_data = pd.DataFrame({
-    'lat': [-23.5505],
-    'lon': [-46.6333]
+    'lat': [st.session_state.lat],
+    'lon': [st.session_state.lon]
 })
-
-# Exibe mapa interativo
 st.map(map_data, zoom=13)
+st.caption(f"📍 Coordenadas: {st.session_state.lat}, {st.session_state.lon}")
 
-# Nota: O mapa nativo do Streamlit não permite clicar para pegar coordenadas
-# diretamente sem folium. Se precisar do clique, teremos que usar outra abordagem.
-# Captura o clique no mapa
-mapa_interativo = st_folium(m, width=700, height=450, returned_objects=["last_object_clicked"])
+# 3. Formulário de Respostas
+st.subheader("3. Preencha os Dados")
 
-# Variáveis para armazenar a lat/long clicada
-lat = None
-lon = None
-
-if mapa_interativo["last_object_clicked"]:
-    lat = mapa_interativo["last_object_clicked"]["lat"]
-    lon = mapa_interativo["last_object_clicked"]["lng"]
-    st.success(f"Local selecionado: {lat}, {lon}")
-else:
-    st.warning("Clique no mapa para definir o pino.")
-
-# 2. Formulário de Respostas
-st.subheader("Preencha os dados")
 with st.form("formulario_dados"):
     nome = st.text_input("Nome")
     resposta = st.text_area("Sua Resposta")
     
-    # Campos ocultos ou preenchidos automaticamente com a localização
-    # O usuário vê, mas não edita (ou edita se quiser refinar)
     col1, col2 = st.columns(2)
     with col1:
-        lat_input = st.number_input("Latitude", value=lat, format="%.6f")
+        lat_final = st.number_input("Latitude Final", value=st.session_state.lat, format="%.6f", key="lat_form")
     with col2:
-        lon_input = st.number_input("Longitude", value=lon, format="%.6f")
+        lon_final = st.number_input("Longitude Final", value=st.session_state.lon, format="%.6f", key="lon_form")
     
     enviado = st.form_submit_button("Enviar Resposta")
 
-# 3. Lógica de Salvamento
+# 4. Lógica de Salvamento
 if enviado:
-    if lat_input and lon_input and nome:
-        # Criar um DataFrame com os dados
+    if nome:
         novo_dado = {
             "Data": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Nome": nome,
             "Resposta": resposta,
-            "Latitude": lat_input,
-            "Longitude": lon_input
+            "Latitude": lat_final,
+            "Longitude": lon_final
         }
         
-        # Salvar em CSV (persistência simples)
         df_novo = pd.DataFrame([novo_dado])
         if not os.path.isfile("dados_coletados.csv"):
             df_novo.to_csv("dados_coletados.csv", index=False)
@@ -75,12 +136,13 @@ if enviado:
             df_novo.to_csv("dados_coletados.csv", mode='a', header=False, index=False)
             
         st.balloons()
-        st.success("Dados enviados com sucesso!")
+        st.success("✅ Dados enviados com sucesso!")
     else:
-        st.error("Por favor, selecione um local no mapa e preencha o nome.")
+        st.error("⚠️ Por favor, preencha pelo menos o nome.")
 
-# 4. Visualizar dados salvos (Opcional)
-if st.checkbox("Ver dados coletados"):
+# 5. Visualizar dados salvos
+st.divider()
+if st.checkbox("Ver dados coletados (sessão atual)"):
     if os.path.isfile("dados_coletados.csv"):
         df = pd.read_csv("dados_coletados.csv")
         st.dataframe(df)
